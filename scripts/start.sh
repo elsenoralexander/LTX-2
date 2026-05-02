@@ -94,7 +94,7 @@ if [ ! -f "$DEPS_MARKER" ] || [ "$DEPS_ACTUAL" = "missing" ]; then
     # Reutiliza PyTorch del sistema (ya viene en el template de RunPod)
     python3.12 -m pip install -q huggingface_hub gradio
     python3.12 -m pip install -q scipy imageio imageio-ffmpeg av
-    python3.12 -m pip install -q accelerate einops safetensors transformers openimageio
+    python3.12 -m pip install -q accelerate einops safetensors "transformers==4.46.3" openimageio
     python3.12 -m pip install -q -e packages/ltx-core --no-deps
     python3.12 -m pip install -q -e packages/ltx-pipelines --no-deps
     python3.12 -m pip install -q -e packages/ltx-trainer --no-deps
