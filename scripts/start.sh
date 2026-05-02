@@ -91,10 +91,11 @@ if [ ! -f "$DEPS_MARKER" ]; then
     cd "$REPO_DIR"
     # Reutiliza PyTorch del sistema (ya viene en el template de RunPod)
     python3.12 -m pip install -q huggingface_hub gradio
+    python3.12 -m pip install -q scipy imageio imageio-ffmpeg av
+    python3.12 -m pip install -q accelerate einops safetensors transformers openimageio
     python3.12 -m pip install -q -e packages/ltx-core --no-deps
     python3.12 -m pip install -q -e packages/ltx-pipelines --no-deps
     python3.12 -m pip install -q -e packages/ltx-trainer --no-deps
-    python3.12 -m pip install -q wandb imageio-ffmpeg scipy bitsandbytes opencv-python av 2>/dev/null || true
     touch "$DEPS_MARKER"
     ok "Dependencias instaladas"
 else
