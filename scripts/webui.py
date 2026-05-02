@@ -94,9 +94,12 @@ def generate_video(
     }
     module = pipeline_map.get(pipeline_type, "ltx_pipelines.distilled")
 
+    # DistilledPipeline usa --distilled-checkpoint-path; el resto usa --checkpoint-path
+    ckpt_flag = "--distilled-checkpoint-path" if module == "ltx_pipelines.distilled" else "--checkpoint-path"
+
     cmd = [
         sys.executable, "-m", module,
-        "--checkpoint-path", str(checkpoint),
+        ckpt_flag, str(checkpoint),
         "--gemma-root", str(GEMMA_ROOT),
         "--prompt", prompt,
         "--output-path", tempfile.mktemp(suffix=".mp4", dir="/tmp"),
