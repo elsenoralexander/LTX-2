@@ -82,8 +82,10 @@ ok "GPU detectada: $GPU"
 header "PASO 2/4 — Verificando instalación"
 
 DEPS_MARKER="$REPO_DIR/.deps_installed"
-if [ ! -f "$DEPS_MARKER" ]; then
-    info "Primera vez — instalando dependencias (~2 min)..."
+# Verifica que scipy esté instalado en python3.12 (se pierde si el contenedor se recrea)
+DEPS_ACTUAL=$(python3.12 -c "import scipy" 2>/dev/null && echo "ok" || echo "missing")
+if [ ! -f "$DEPS_MARKER" ] || [ "$DEPS_ACTUAL" = "missing" ]; then
+    info "Instalando dependencias (~2 min)..."
     if [ ! -d "$REPO_DIR" ]; then
         info "Clonando repositorio..."
         git clone https://github.com/elsenoralexander/LTX-2.git "$REPO_DIR"
