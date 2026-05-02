@@ -93,7 +93,7 @@ if [ ! -f "$DEPS_MARKER" ] || [ "$DEPS_ACTUAL" = "missing" ]; then
     python3.12 -m pip install -q huggingface_hub gradio
     python3.12 -m pip install -q scipy imageio imageio-ffmpeg av
     python3.12 -m pip install -q accelerate einops safetensors openimageio
-    python3.12 -m pip install -q "transformers>=4.52"
+    python3.12 -m pip install -q "transformers==4.51.3"
     python3.12 -m pip install -q -e packages/ltx-core --no-deps
     python3.12 -m pip install -q -e packages/ltx-pipelines --no-deps
     python3.12 -m pip install -q -e packages/ltx-trainer --no-deps
