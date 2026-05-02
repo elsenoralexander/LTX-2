@@ -115,9 +115,11 @@ def generate_video(
     if negative_prompt.strip():
         cmd += ["--negative-prompt", negative_prompt]
 
+    # Todos los pipelines necesitan el upscaler
+    if UPSCALER_X2.exists():
+        cmd += ["--spatial-upsampler-path", str(UPSCALER_X2)]
+    # LoRA solo para pipelines no-distilled
     if "distilled" not in module.split(".")[-1]:
-        if UPSCALER_X2.exists():
-            cmd += ["--spatial-upsampler-path", str(UPSCALER_X2)]
         if DISTILLED_LORA.exists():
             cmd += ["--distilled-lora", str(DISTILLED_LORA), "0.8"]
 
