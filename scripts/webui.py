@@ -1,10 +1,5 @@
 """
 LTX-2.3 Web UI — Gradio interface for RunPod
-Corre en el pod y accedes desde tu navegador via el puerto público de RunPod.
-
-Uso:
-    source /workspace/LTX-2/.venv/bin/activate
-    python /workspace/LTX-2/scripts/webui.py
 
 Variables de entorno opcionales:
     MODELS_DIR   ruta a los modelos (default: /workspace/models)
@@ -17,7 +12,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-# --- Instalar gradio si no está ---
 try:
     import gradio as gr
 except ImportError:
@@ -28,12 +22,11 @@ MODELS_DIR = Path(os.environ.get("MODELS_DIR", "/workspace/models"))
 REPO_DIR = Path(os.environ.get("REPO_DIR", "/workspace/LTX-2"))
 PORT = int(os.environ.get("PORT", 7860))
 
-# Rutas de modelos (se auto-detectan)
 DISTILLED_CKPT = MODELS_DIR / "ltx-2.3-22b-distilled-1.1.safetensors"
-DEV_CKPT = MODELS_DIR / "ltx-2.3-22b-dev.safetensors"
-UPSCALER_X2 = MODELS_DIR / "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
+DEV_CKPT       = MODELS_DIR / "ltx-2.3-22b-dev.safetensors"
+UPSCALER_X2    = MODELS_DIR / "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
 DISTILLED_LORA = MODELS_DIR / "ltx-2.3-22b-distilled-lora-384-1.1.safetensors"
-GEMMA_ROOT = MODELS_DIR / "gemma-3-12b"
+GEMMA_ROOT     = MODELS_DIR / "gemma-3-12b"
 
 # Aspect ratio → (width, height) — todos múltiplos de 64
 RESOLUTION_MAP = {
@@ -51,9 +44,10 @@ RESOLUTION_MAP = {
     ("1:1 — Cuadrado",    "HD"):       (768, 768),
 }
 
+IMAGE_POSITION_LABELS = ["Inicio (frame 0)", "Mitad", "Final"]
+
 
 def seconds_to_frames(seconds: float) -> int:
-    """Convierte segundos a número de frames válido (8n+1, mín 9)."""
     raw = round(seconds * 24)
     raw = max(9, raw)
     n = max(1, round((raw - 1) / 8))
@@ -61,7 +55,6 @@ def seconds_to_frames(seconds: float) -> int:
 
 
 def get_checkpoint() -> Path:
-    """Devuelve el checkpoint disponible (distilled tiene prioridad)."""
     if DISTILLED_CKPT.exists():
         return DISTILLED_CKPT
     if DEV_CKPT.exists():
@@ -81,12 +74,18 @@ def generate_video(
     pipeline_type: str,
     quantization: str,
     seed: int,
-    image_path: str | None,
+    # Tres imágenes de referencia con su posición y fuerza
+    img1_path: str | None,
+    img1_position: str,
+    img1_strength: float,
+    img2_path: str | None,
+    img2_position: str,
+    img2_strength: float,
+    img3_path: str | None,
+    img3_position: str,
+    img3_strength: float,
 ) -> tuple[str, str]:
-    """Llama al pipeline de LTX-2 y devuelve (ruta_video, log)."""
-    output_path = tempfile.mktemp(suffix=".mp4", dir="/tmp")
 
-    # Calcular resolución y frames
     width, height = RESOLUTION_MAP.get((aspect_ratio, quality), (768, 448))
     num_frames = seconds_to_frames(duration_seconds)
 
@@ -95,10 +94,9 @@ def generate_video(
     except FileNotFoundError as e:
         return None, str(e)
 
-    # Seleccionar pipeline y módulo
     pipeline_map = {
-        "DistilledPipeline (más rápido)": "ltx_pipelines.distilled",
-        "TI2VidTwoStagesPipeline (recomendado)": "ltx_pipelines.ti2vid_two_stages",
+        "DistilledPipeline (más rápido)":          "ltx_pipelines.distilled",
+        "TI2VidTwoStagesPipeline (recomendado)":   "ltx_pipelines.ti2vid_two_stages",
         "TI2VidTwoStagesHQPipeline (mejor calidad)": "ltx_pipelines.ti2vid_two_stages_hq",
         "TI2VidOneStagePipeline (rápido/prototipo)": "ltx_pipelines.ti2vid_one_stage",
     }
@@ -109,57 +107,69 @@ def generate_video(
         "--checkpoint-path", str(checkpoint),
         "--gemma-root", str(GEMMA_ROOT),
         "--prompt", prompt,
-        "--output-path", output_path,
+        "--output-path", tempfile.mktemp(suffix=".mp4", dir="/tmp"),
         "--width", str(width),
         "--height", str(height),
         "--num-frames", str(num_frames),
         "--seed", str(seed),
     ]
 
-    # Negative prompt
+    # Guardar la ruta de salida para devolverla
+    output_path = cmd[cmd.index("--output-path") + 1]
+
     if negative_prompt.strip():
         cmd += ["--negative-prompt", negative_prompt]
 
-    # Upscaler y LoRA (necesarios para pipelines de 2 etapas)
     if "distilled" not in module.split(".")[-1]:
         if UPSCALER_X2.exists():
             cmd += ["--spatial-upsampler-path", str(UPSCALER_X2)]
         if DISTILLED_LORA.exists():
             cmd += ["--distilled-lora", str(DISTILLED_LORA), "0.8"]
 
-    # Imagen de condicionamiento (opcional)
-    if image_path:
-        cmd += ["--image", image_path, "0", "1.0"]
+    # Añadir imágenes de referencia
+    position_to_frame = {
+        "Inicio (frame 0)": 0,
+        "Mitad":            num_frames // 2,
+        "Final":            num_frames - 1,
+    }
 
-    # Quantization
+    images = [
+        (img1_path, img1_position, img1_strength),
+        (img2_path, img2_position, img2_strength),
+        (img3_path, img3_position, img3_strength),
+    ]
+    image_log = []
+    for path, position, strength in images:
+        if path:
+            frame_idx = position_to_frame.get(position, 0)
+            cmd += ["--image", path, str(frame_idx), str(round(strength, 2))]
+            image_log.append(f"  · {Path(path).name} → frame {frame_idx}, strength {strength:.2f}")
+
     if quantization != "ninguna":
         cmd += ["--quantization", quantization]
 
-    # Ejecutar
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(REPO_DIR / "packages/ltx-pipelines/src") + ":" + \
-                        str(REPO_DIR / "packages/ltx-core/src") + ":" + \
-                        env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (
+        str(REPO_DIR / "packages/ltx-pipelines/src") + ":" +
+        str(REPO_DIR / "packages/ltx-core/src") + ":" +
+        env.get("PYTHONPATH", "")
+    )
 
     log_lines = [
         f"Resolución: {width}x{height} ({aspect_ratio} · {quality})",
         f"Duración: {duration_seconds}s → {num_frames} frames",
         f"Pipeline: {module}",
-        f"Comando: {' '.join(cmd)}",
-        "",
     ]
+    if image_log:
+        log_lines.append("Referencias visuales:")
+        log_lines += image_log
+    log_lines += ["", f"Comando: {' '.join(cmd)}", ""]
+
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=env,
-            cwd=str(REPO_DIR),
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=str(REPO_DIR))
         log_lines.append(result.stdout)
         if result.returncode != 0:
-            log_lines.append("=== STDERR ===")
-            log_lines.append(result.stderr)
+            log_lines += ["=== STDERR ===", result.stderr]
             return None, "\n".join(log_lines)
     except Exception as e:
         log_lines.append(f"Error: {e}")
@@ -173,13 +183,14 @@ def generate_video(
 
 
 # =============================================================================
-# Interfaz Gradio
+# UI
 # =============================================================================
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="LTX-2.3 — Generador de Video") as demo:
         gr.Markdown("# LTX-2.3 — Generador de Video\nModelo de 22B parámetros corriendo en tu GPU alquilada.")
 
         with gr.Row():
+            # --- Columna izquierda: texto + referencias ---
             with gr.Column(scale=2):
                 prompt = gr.Textbox(
                     label="Prompt",
@@ -191,11 +202,25 @@ def build_ui() -> gr.Blocks:
                     placeholder="blurry, low quality, distorted...",
                     lines=2,
                 )
-                image_input = gr.Image(
-                    label="Imagen de referencia (opcional)",
-                    type="filepath",
-                )
 
+                gr.Markdown("### Referencias visuales (hasta 3)")
+                gr.Markdown("*Puedes anclar cada imagen al inicio, la mitad o el final del video.*")
+
+                with gr.Row():
+                    with gr.Column():
+                        img1 = gr.Image(label="Referencia 1", type="filepath")
+                        img1_pos = gr.Dropdown(IMAGE_POSITION_LABELS, value="Inicio (frame 0)", label="Posición", show_label=False)
+                        img1_str = gr.Slider(0.1, 1.0, value=1.0, step=0.05, label="Fuerza")
+                    with gr.Column():
+                        img2 = gr.Image(label="Referencia 2", type="filepath")
+                        img2_pos = gr.Dropdown(IMAGE_POSITION_LABELS, value="Mitad", label="Posición", show_label=False)
+                        img2_str = gr.Slider(0.1, 1.0, value=0.8, step=0.05, label="Fuerza")
+                    with gr.Column():
+                        img3 = gr.Image(label="Referencia 3", type="filepath")
+                        img3_pos = gr.Dropdown(IMAGE_POSITION_LABELS, value="Final", label="Posición", show_label=False)
+                        img3_str = gr.Slider(0.1, 1.0, value=0.8, step=0.05, label="Fuerza")
+
+            # --- Columna derecha: parámetros ---
             with gr.Column(scale=1):
                 pipeline_type = gr.Dropdown(
                     label="Pipeline",
@@ -244,24 +269,29 @@ def build_ui() -> gr.Blocks:
 
         generate_btn.click(
             fn=generate_video,
-            inputs=[prompt, negative_prompt, aspect_ratio, quality,
-                    duration_seconds, pipeline_type, quantization, seed, image_input],
+            inputs=[
+                prompt, negative_prompt, aspect_ratio, quality,
+                duration_seconds, pipeline_type, quantization, seed,
+                img1, img1_pos, img1_str,
+                img2, img2_pos, img2_str,
+                img3, img3_pos, img3_str,
+            ],
             outputs=[video_output, log_output],
         )
 
         gr.Markdown("""
         ### Tips
-        - **DistilledPipeline**: ~2-5 min en RTX 4090
-        - **TI2VidTwoStagesPipeline**: ~8-15 min, calidad producción
+        - **DistilledPipeline**: ~2-5 min en RTX 4090 · buena calidad
+        - **TI2VidTwoStagesPipeline**: ~8-15 min · calidad producción
         - **fp8-cast**: reduce VRAM a ~24 GB (ideal RTX 4090)
-        - Duración recomendada: 4s para empezar, hasta 10s para escenas largas
+        - **Referencia 1 en "Inicio"**: ancla el primer fotograma del video a tu imagen
+        - Puedes usar solo una, dos o las tres referencias
         """)
 
     return demo
 
 
 if __name__ == "__main__":
-    # Verificar modelos
     missing = []
     if not DISTILLED_CKPT.exists() and not DEV_CKPT.exists():
         missing.append(f"Checkpoint: {DISTILLED_CKPT} o {DEV_CKPT}")
@@ -269,14 +299,10 @@ if __name__ == "__main__":
         missing.append(f"Gemma: {GEMMA_ROOT}")
 
     if missing:
-        print("AVISO: faltan estos modelos (ejecuta download_models.sh):")
+        print("AVISO: faltan modelos (ejecuta download_models.sh):")
         for m in missing:
             print(f"  - {m}")
-        print("Iniciando UI de todas formas (generación fallará sin los modelos).")
+        print("Iniciando UI de todas formas.")
 
     demo = build_ui()
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=PORT,
-        share=False,
-    )
+    demo.launch(server_name="0.0.0.0", server_port=PORT, share=False)
