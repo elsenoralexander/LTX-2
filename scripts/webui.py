@@ -35,6 +35,30 @@ UPSCALER_X2 = MODELS_DIR / "ltx-2.3-spatial-upscaler-x2-1.1.safetensors"
 DISTILLED_LORA = MODELS_DIR / "ltx-2.3-22b-distilled-lora-384-1.1.safetensors"
 GEMMA_ROOT = MODELS_DIR / "gemma-3-12b"
 
+# Aspect ratio → (width, height) — todos múltiplos de 64
+RESOLUTION_MAP = {
+    ("16:9 — Horizontal", "Rápido"):   (640, 384),
+    ("16:9 — Horizontal", "Estándar"): (768, 448),
+    ("16:9 — Horizontal", "HD"):       (1024, 576),
+    ("4:3 — Clásico",     "Rápido"):   (640, 512),
+    ("4:3 — Clásico",     "Estándar"): (768, 576),
+    ("4:3 — Clásico",     "HD"):       (1024, 768),
+    ("9:16 — Vertical",   "Rápido"):   (384, 640),
+    ("9:16 — Vertical",   "Estándar"): (448, 768),
+    ("9:16 — Vertical",   "HD"):       (576, 1024),
+    ("1:1 — Cuadrado",    "Rápido"):   (512, 512),
+    ("1:1 — Cuadrado",    "Estándar"): (640, 640),
+    ("1:1 — Cuadrado",    "HD"):       (768, 768),
+}
+
+
+def seconds_to_frames(seconds: float) -> int:
+    """Convierte segundos a número de frames válido (8n+1, mín 9)."""
+    raw = round(seconds * 24)
+    raw = max(9, raw)
+    n = max(1, round((raw - 1) / 8))
+    return min(n * 8 + 1, 257)
+
 
 def get_checkpoint() -> Path:
     """Devuelve el checkpoint disponible (distilled tiene prioridad)."""
@@ -51,9 +75,9 @@ def get_checkpoint() -> Path:
 def generate_video(
     prompt: str,
     negative_prompt: str,
-    width: int,
-    height: int,
-    num_frames: int,
+    aspect_ratio: str,
+    quality: str,
+    duration_seconds: float,
     pipeline_type: str,
     quantization: str,
     seed: int,
@@ -61,6 +85,10 @@ def generate_video(
 ) -> tuple[str, str]:
     """Llama al pipeline de LTX-2 y devuelve (ruta_video, log)."""
     output_path = tempfile.mktemp(suffix=".mp4", dir="/tmp")
+
+    # Calcular resolución y frames
+    width, height = RESOLUTION_MAP.get((aspect_ratio, quality), (768, 448))
+    num_frames = seconds_to_frames(duration_seconds)
 
     try:
         checkpoint = get_checkpoint()
@@ -113,7 +141,13 @@ def generate_video(
                         str(REPO_DIR / "packages/ltx-core/src") + ":" + \
                         env.get("PYTHONPATH", "")
 
-    log_lines = [f"Ejecutando pipeline: {module}", f"Comando: {' '.join(cmd)}", ""]
+    log_lines = [
+        f"Resolución: {width}x{height} ({aspect_ratio} · {quality})",
+        f"Duración: {duration_seconds}s → {num_frames} frames",
+        f"Pipeline: {module}",
+        f"Comando: {' '.join(cmd)}",
+        "",
+    ]
     try:
         result = subprocess.run(
             cmd,
@@ -143,7 +177,7 @@ def generate_video(
 # =============================================================================
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="LTX-2.3 — Generador de Video") as demo:
-        gr.Markdown("# LTX-2.3 — Generador de Video Local\nModelo de 22B parámetros corriendo en tu GPU alquilada.")
+        gr.Markdown("# LTX-2.3 — Generador de Video\nModelo de 22B parámetros corriendo en tu GPU alquilada.")
 
         with gr.Row():
             with gr.Column(scale=2):
@@ -158,7 +192,7 @@ def build_ui() -> gr.Blocks:
                     lines=2,
                 )
                 image_input = gr.Image(
-                    label="Imagen de condicionamiento (opcional)",
+                    label="Imagen de referencia (opcional)",
                     type="filepath",
                 )
 
@@ -177,11 +211,29 @@ def build_ui() -> gr.Blocks:
                     label="Quantization",
                     choices=["ninguna", "fp8-cast", "fp8-scaled-mm"],
                     value="fp8-cast",
-                    info="fp8-cast reduce VRAM ~50%. Usar fp8-scaled-mm solo en H100.",
+                    info="fp8-cast reduce VRAM ~50%. fp8-scaled-mm solo en H100.",
                 )
-                width = gr.Slider(256, 1280, value=768, step=64, label="Ancho (px) — múltiplo de 64")
-                height = gr.Slider(256, 1280, value=448, step=64, label="Alto (px) — múltiplo de 64")
-                num_frames = gr.Slider(9, 257, value=97, step=8, label="Frames (múltiplo de 8 + 1)")
+                aspect_ratio = gr.Dropdown(
+                    label="Formato",
+                    choices=[
+                        "16:9 — Horizontal",
+                        "4:3 — Clásico",
+                        "9:16 — Vertical",
+                        "1:1 — Cuadrado",
+                    ],
+                    value="16:9 — Horizontal",
+                )
+                quality = gr.Dropdown(
+                    label="Calidad / Resolución",
+                    choices=["Rápido", "Estándar", "HD"],
+                    value="Estándar",
+                    info="Rápido=640px · Estándar=768px · HD=1024px",
+                )
+                duration_seconds = gr.Slider(
+                    minimum=2, maximum=10, value=4, step=0.5,
+                    label="Duración (segundos)",
+                    info="Se convierte a frames automáticamente (24fps)",
+                )
                 seed = gr.Number(value=42, label="Seed", precision=0)
 
         generate_btn = gr.Button("Generar Video", variant="primary", size="lg")
@@ -192,17 +244,17 @@ def build_ui() -> gr.Blocks:
 
         generate_btn.click(
             fn=generate_video,
-            inputs=[prompt, negative_prompt, width, height, num_frames,
-                    pipeline_type, quantization, seed, image_input],
+            inputs=[prompt, negative_prompt, aspect_ratio, quality,
+                    duration_seconds, pipeline_type, quantization, seed, image_input],
             outputs=[video_output, log_output],
         )
 
         gr.Markdown("""
         ### Tips
-        - **DistilledPipeline**: 8 pasos — más rápido (~2-5 min en A100)
-        - **TI2VidTwoStagesPipeline**: calidad producción, más lento (~10-15 min)
-        - **fp8-cast**: reduce VRAM a ~24 GB (ideal para RTX 4090 o A100 40GB)
-        - Frames recomendados: 97 (~4s a 24fps), 145 (~6s), 193 (~8s)
+        - **DistilledPipeline**: ~2-5 min en RTX 4090
+        - **TI2VidTwoStagesPipeline**: ~8-15 min, calidad producción
+        - **fp8-cast**: reduce VRAM a ~24 GB (ideal RTX 4090)
+        - Duración recomendada: 4s para empezar, hasta 10s para escenas largas
         """)
 
     return demo
@@ -226,5 +278,5 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=PORT,
-        share=False,   # True si quieres link público de Gradio
+        share=False,
     )
