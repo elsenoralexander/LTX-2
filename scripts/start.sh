@@ -145,29 +145,41 @@ if [ "$MODELS_OK" = false ]; then
     info "Descargando modelo distilled (~44 GB)..."
     python3 -c "
 from huggingface_hub import hf_hub_download
-hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-22b-distilled-1.1.safetensors', local_dir='$MODELS_DIR')
-print('OK')
+import sys, os
+print('  Iniciando descarga...', flush=True)
+path = hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-22b-distilled-1.1.safetensors', local_dir='$MODELS_DIR')
+size = os.path.getsize(path) / 1024**3
+print(f'  Descargado: {size:.1f} GB -> {path}', flush=True)
 "
 
     info "Descargando spatial upscaler (~2 GB)..."
     python3 -c "
 from huggingface_hub import hf_hub_download
-hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors', local_dir='$MODELS_DIR')
-print('OK')
+import sys, os
+print('  Iniciando descarga...', flush=True)
+path = hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors', local_dir='$MODELS_DIR')
+size = os.path.getsize(path) / 1024**3
+print(f'  Descargado: {size:.2f} GB -> {path}', flush=True)
 "
 
     info "Descargando distilled LoRA (~1 GB)..."
     python3 -c "
 from huggingface_hub import hf_hub_download
-hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-22b-distilled-lora-384-1.1.safetensors', local_dir='$MODELS_DIR')
-print('OK')
+import sys, os
+print('  Iniciando descarga...', flush=True)
+path = hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-22b-distilled-lora-384-1.1.safetensors', local_dir='$MODELS_DIR')
+size = os.path.getsize(path) / 1024**3
+print(f'  Descargado: {size:.2f} GB -> {path}', flush=True)
 "
 
     info "Descargando Gemma text encoder (~8 GB)..."
     python3 -c "
 from huggingface_hub import snapshot_download
-snapshot_download('google/gemma-3-12b-it-qat-q4_0-unquantized', local_dir='$GEMMA')
-print('OK')
+import os
+print('  Iniciando descarga (varios ficheros)...', flush=True)
+path = snapshot_download('google/gemma-3-12b-it-qat-q4_0-unquantized', local_dir='$GEMMA')
+total = sum(os.path.getsize(os.path.join(r,f)) for r,_,fs in os.walk(path) for f in fs) / 1024**3
+print(f'  Descargado: {total:.1f} GB -> {path}', flush=True)
 "
 
     ok "Modelos descargados"
