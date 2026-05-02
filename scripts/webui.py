@@ -44,8 +44,6 @@ RESOLUTION_MAP = {
     ("1:1 — Cuadrado",    "HD"):       (768, 768),
 }
 
-IMAGE_POSITION_LABELS = ["Inicio (frame 0)", "Mitad", "Final"]
-
 
 def seconds_to_frames(seconds: float) -> int:
     raw = round(seconds * 24)
@@ -74,16 +72,8 @@ def generate_video(
     pipeline_type: str,
     quantization: str,
     seed: int,
-    # Tres imágenes de referencia con su posición y fuerza
     img1_path: str | None,
-    img1_position: str,
     img1_strength: float,
-    img2_path: str | None,
-    img2_position: str,
-    img2_strength: float,
-    img3_path: str | None,
-    img3_position: str,
-    img3_strength: float,
 ) -> tuple[str, str]:
 
     width, height = RESOLUTION_MAP.get((aspect_ratio, quality), (768, 448))
@@ -126,24 +116,11 @@ def generate_video(
         if DISTILLED_LORA.exists():
             cmd += ["--distilled-lora", str(DISTILLED_LORA), "0.8"]
 
-    # Añadir imágenes de referencia
-    position_to_frame = {
-        "Inicio (frame 0)": 0,
-        "Mitad":            num_frames // 2,
-        "Final":            num_frames - 1,
-    }
-
-    images = [
-        (img1_path, img1_position, img1_strength),
-        (img2_path, img2_position, img2_strength),
-        (img3_path, img3_position, img3_strength),
-    ]
+    # Imagen de referencia anclada al frame 0
     image_log = []
-    for path, position, strength in images:
-        if path:
-            frame_idx = position_to_frame.get(position, 0)
-            cmd += ["--image", path, str(frame_idx), str(round(strength, 2))]
-            image_log.append(f"  · {Path(path).name} → frame {frame_idx}, strength {strength:.2f}")
+    if img1_path:
+        cmd += ["--image", img1_path, "0", str(round(img1_strength, 2))]
+        image_log.append(f"  · {Path(img1_path).name} → frame 0, strength {img1_strength:.2f}")
 
     if quantization != "ninguna":
         cmd += ["--quantization", quantization]
@@ -203,22 +180,15 @@ def build_ui() -> gr.Blocks:
                     lines=2,
                 )
 
-                gr.Markdown("### Referencias visuales (hasta 3)")
-                gr.Markdown("*Puedes anclar cada imagen al inicio, la mitad o el final del video.*")
-
-                with gr.Row():
-                    with gr.Column():
-                        img1 = gr.Image(label="Referencia 1", type="filepath")
-                        img1_pos = gr.Dropdown(IMAGE_POSITION_LABELS, value="Inicio (frame 0)", label="Posición", show_label=False)
-                        img1_str = gr.Slider(0.1, 1.0, value=1.0, step=0.05, label="Fuerza")
-                    with gr.Column():
-                        img2 = gr.Image(label="Referencia 2", type="filepath")
-                        img2_pos = gr.Dropdown(IMAGE_POSITION_LABELS, value="Mitad", label="Posición", show_label=False)
-                        img2_str = gr.Slider(0.1, 1.0, value=0.8, step=0.05, label="Fuerza")
-                    with gr.Column():
-                        img3 = gr.Image(label="Referencia 3", type="filepath")
-                        img3_pos = gr.Dropdown(IMAGE_POSITION_LABELS, value="Final", label="Posición", show_label=False)
-                        img3_str = gr.Slider(0.1, 1.0, value=0.8, step=0.05, label="Fuerza")
+                gr.Markdown("### Imagen de referencia (opcional)")
+                gr.Markdown(
+                    "Ancla el **primer fotograma** del video a esta imagen — el modelo intentará "
+                    "arrancar desde ella y mantener coherencia visual. "
+                    "No es IP-Adapter: no transfiere estilos ni objetos sueltos. "
+                    "Describe todo el detalle visual que quieras en el prompt."
+                )
+                img1 = gr.Image(label="Imagen de referencia", type="filepath")
+                img1_str = gr.Slider(0.5, 1.0, value=1.0, step=0.05, label="Fuerza de condicionamiento")
 
             # --- Columna derecha: parámetros ---
             with gr.Column(scale=1):
@@ -272,9 +242,7 @@ def build_ui() -> gr.Blocks:
             inputs=[
                 prompt, negative_prompt, aspect_ratio, quality,
                 duration_seconds, pipeline_type, quantization, seed,
-                img1, img1_pos, img1_str,
-                img2, img2_pos, img2_str,
-                img3, img3_pos, img3_str,
+                img1, img1_str,
             ],
             outputs=[video_output, log_output],
         )
@@ -284,8 +252,8 @@ def build_ui() -> gr.Blocks:
         - **DistilledPipeline**: ~2-5 min en RTX 4090 · buena calidad
         - **TI2VidTwoStagesPipeline**: ~8-15 min · calidad producción
         - **fp8-cast**: reduce VRAM a ~24 GB (ideal RTX 4090)
-        - **Referencia 1 en "Inicio"**: ancla el primer fotograma del video a tu imagen
-        - Puedes usar solo una, dos o las tres referencias
+        - **Imagen de referencia**: ancla el primer fotograma a tu imagen
+        - Para consistencia de personaje: descríbelo con todo detalle en el prompt
         """)
 
     return demo
