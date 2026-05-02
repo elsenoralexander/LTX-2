@@ -74,6 +74,8 @@ def generate_video(
     seed: int,
     img1_path: str | None,
     img1_strength: float,
+    img2_path: str | None,
+    img2_strength: float,
 ) -> tuple[str, str]:
 
     width, height = RESOLUTION_MAP.get((aspect_ratio, quality), (768, 448))
@@ -116,11 +118,13 @@ def generate_video(
         if DISTILLED_LORA.exists():
             cmd += ["--distilled-lora", str(DISTILLED_LORA), "0.8"]
 
-    # Imagen de referencia anclada al frame 0
     image_log = []
     if img1_path:
         cmd += ["--image", img1_path, "0", str(round(img1_strength, 2))]
-        image_log.append(f"  · {Path(img1_path).name} → frame 0, strength {img1_strength:.2f}")
+        image_log.append(f"  · {Path(img1_path).name} → frame 0 (inicio), strength {img1_strength:.2f}")
+    if img2_path:
+        cmd += ["--image", img2_path, str(num_frames - 1), str(round(img2_strength, 2))]
+        image_log.append(f"  · {Path(img2_path).name} → frame {num_frames - 1} (final), strength {img2_strength:.2f}")
 
     if quantization != "ninguna":
         cmd += ["--quantization", quantization]
@@ -180,15 +184,14 @@ def build_ui() -> gr.Blocks:
                     lines=2,
                 )
 
-                gr.Markdown("### Imagen de referencia (opcional)")
-                gr.Markdown(
-                    "Ancla el **primer fotograma** del video a esta imagen — el modelo intentará "
-                    "arrancar desde ella y mantener coherencia visual. "
-                    "No es IP-Adapter: no transfiere estilos ni objetos sueltos. "
-                    "Describe todo el detalle visual que quieras en el prompt."
-                )
-                img1 = gr.Image(label="Imagen de referencia", type="filepath")
-                img1_str = gr.Slider(0.5, 1.0, value=1.0, step=0.05, label="Fuerza de condicionamiento")
+                gr.Markdown("### Imágenes de referencia (opcional)")
+                with gr.Row():
+                    with gr.Column():
+                        img1 = gr.Image(label="Frame inicial", type="filepath")
+                        img1_str = gr.Slider(0.5, 1.0, value=1.0, step=0.05, label="Fuerza")
+                    with gr.Column():
+                        img2 = gr.Image(label="Frame final", type="filepath")
+                        img2_str = gr.Slider(0.5, 1.0, value=0.9, step=0.05, label="Fuerza")
 
             # --- Columna derecha: parámetros ---
             with gr.Column(scale=1):
@@ -243,6 +246,7 @@ def build_ui() -> gr.Blocks:
                 prompt, negative_prompt, aspect_ratio, quality,
                 duration_seconds, pipeline_type, quantization, seed,
                 img1, img1_str,
+                img2, img2_str,
             ],
             outputs=[video_output, log_output],
         )
@@ -252,8 +256,9 @@ def build_ui() -> gr.Blocks:
         - **DistilledPipeline**: ~2-5 min en RTX 4090 · buena calidad
         - **TI2VidTwoStagesPipeline**: ~8-15 min · calidad producción
         - **fp8-cast**: reduce VRAM a ~24 GB (ideal RTX 4090)
-        - **Imagen de referencia**: ancla el primer fotograma a tu imagen
-        - Para consistencia de personaje: descríbelo con todo detalle en el prompt
+        - **Frame inicial + final**: el modelo interpola entre las dos imágenes
+        - Puedes usar solo una, las dos, o ninguna
+        - Para consistencia de personaje: descríbelo con detalle en el prompt
         """)
 
     return demo
