@@ -154,7 +154,8 @@ VIDEO_ONLY_EMBEDDINGS_PROCESSOR_KEY_OPS = (
 
 def create_and_populate(module: GemmaTextEncoder) -> GemmaTextEncoder:
     model = module.model
-    v_model = model.model.vision_tower.vision_model
+    _vision_tower = model.model.vision_tower
+    v_model = _vision_tower.vision_model if hasattr(_vision_tower, "vision_model") else _vision_tower
     l_model = model.model.language_model
 
     config = model.config.text_config
