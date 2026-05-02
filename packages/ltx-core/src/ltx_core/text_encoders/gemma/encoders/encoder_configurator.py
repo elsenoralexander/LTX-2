@@ -169,10 +169,6 @@ def create_and_populate(module: GemmaTextEncoder) -> GemmaTextEncoder:
     )
     local_rope_freqs = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(dtype=torch.float) / dim))
 
-    # rope_type key renamed between transformers versions
-    rope_type = rope_scaling.get("rope_type") or rope_scaling.get("type", "llama3")
-    inv_freqs, _ = ROPE_INIT_FUNCTIONS[rope_type](config)
-
     positions_length = len(v_model.embeddings.position_ids[0])
     position_ids = torch.arange(positions_length, dtype=torch.long, device="cpu").unsqueeze(0)
     v_model.embeddings.register_buffer("position_ids", position_ids)
@@ -181,8 +177,17 @@ def create_and_populate(module: GemmaTextEncoder) -> GemmaTextEncoder:
     # rotary_emb_local may be renamed in newer transformers
     if hasattr(l_model, "rotary_emb_local"):
         l_model.rotary_emb_local.register_buffer("inv_freq", local_rope_freqs)
+    # In transformers 5.x, ROPE_INIT_FUNCTIONS API changed; try to register inv_freq,
+    # but skip gracefully if it fails — newer transformers initializes it internally.
     if hasattr(l_model, "rotary_emb"):
-        l_model.rotary_emb.register_buffer("inv_freq", inv_freqs)
+        try:
+            rope_type = rope_scaling.get("rope_type") or rope_scaling.get("type", "llama3")
+            inv_freqs, _ = ROPE_INIT_FUNCTIONS[rope_type](config)
+            l_model.rotary_emb.register_buffer("inv_freq", inv_freqs)
+        except Exception:
+            rope_theta = getattr(config, "rope_theta", 500000.0)
+            inv_freqs = 1.0 / (rope_theta ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
+            l_model.rotary_emb.register_buffer("inv_freq", inv_freqs)
 
     return module
 
