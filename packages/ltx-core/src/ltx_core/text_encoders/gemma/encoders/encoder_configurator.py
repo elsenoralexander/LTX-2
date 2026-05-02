@@ -160,19 +160,29 @@ def create_and_populate(module: GemmaTextEncoder) -> GemmaTextEncoder:
 
     config = model.config.text_config
     dim = getattr(config, "head_dim", config.hidden_size // config.num_attention_heads)
-    # rope_local_base_freq was renamed/restructured in transformers>=5.0
-    base = getattr(config, "rope_local_base_freq",
-                   getattr(config, "rope_scaling", {}).get("rope_local_base_freq", 10000.0))
+
+    # rope_local_base_freq moved in transformers 5.x
+    rope_scaling = getattr(config, "rope_scaling", {}) or {}
+    base = (
+        getattr(config, "rope_local_base_freq", None)
+        or rope_scaling.get("rope_local_base_freq", 10000.0)
+    )
     local_rope_freqs = 1.0 / (base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(dtype=torch.float) / dim))
-    inv_freqs, _ = ROPE_INIT_FUNCTIONS[config.rope_scaling["rope_type"]](config)
+
+    # rope_type key renamed between transformers versions
+    rope_type = rope_scaling.get("rope_type") or rope_scaling.get("type", "llama3")
+    inv_freqs, _ = ROPE_INIT_FUNCTIONS[rope_type](config)
 
     positions_length = len(v_model.embeddings.position_ids[0])
     position_ids = torch.arange(positions_length, dtype=torch.long, device="cpu").unsqueeze(0)
     v_model.embeddings.register_buffer("position_ids", position_ids)
     embed_scale = torch.tensor(model.config.text_config.hidden_size**0.5, device="cpu")
     l_model.embed_tokens.register_buffer("embed_scale", embed_scale)
-    l_model.rotary_emb_local.register_buffer("inv_freq", local_rope_freqs)
-    l_model.rotary_emb.register_buffer("inv_freq", inv_freqs)
+    # rotary_emb_local may be renamed in newer transformers
+    if hasattr(l_model, "rotary_emb_local"):
+        l_model.rotary_emb_local.register_buffer("inv_freq", local_rope_freqs)
+    if hasattr(l_model, "rotary_emb"):
+        l_model.rotary_emb.register_buffer("inv_freq", inv_freqs)
 
     return module
 
