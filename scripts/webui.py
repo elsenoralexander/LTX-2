@@ -179,8 +179,8 @@ def build_ui() -> gr.Blocks:
                     value="fp8-cast",
                     info="fp8-cast reduce VRAM ~50%. Usar fp8-scaled-mm solo en H100.",
                 )
-                width = gr.Slider(256, 1280, value=768, step=32, label="Ancho (px)")
-                height = gr.Slider(256, 1280, value=512, step=32, label="Alto (px)")
+                width = gr.Slider(256, 1280, value=768, step=64, label="Ancho (px) — múltiplo de 64")
+                height = gr.Slider(256, 1280, value=448, step=64, label="Alto (px) — múltiplo de 64")
                 num_frames = gr.Slider(9, 257, value=97, step=8, label="Frames (múltiplo de 8 + 1)")
                 seed = gr.Number(value=42, label="Seed", precision=0)
 
