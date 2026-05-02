@@ -82,19 +82,18 @@ ok "GPU detectada: $GPU"
 header "PASO 2/4 — Verificando instalación"
 
 DEPS_MARKER="$REPO_DIR/.deps_installed"
-# Verifica que scipy esté instalado en python3.12 (se pierde si el contenedor se recrea)
-DEPS_ACTUAL=$(python3.12 -c "import scipy" 2>/dev/null && echo "ok" || echo "missing")
+DEPS_ACTUAL=$(python3.12 -c "import scipy, transformers, accelerate, einops, safetensors" 2>/dev/null && echo "ok" || echo "missing")
 if [ ! -f "$DEPS_MARKER" ] || [ "$DEPS_ACTUAL" = "missing" ]; then
-    info "Instalando dependencias (~2 min)..."
+    info "Instalando dependencias (~3 min)..."
     if [ ! -d "$REPO_DIR" ]; then
         info "Clonando repositorio..."
         git clone https://github.com/elsenoralexander/LTX-2.git "$REPO_DIR"
     fi
     cd "$REPO_DIR"
-    # Reutiliza PyTorch del sistema (ya viene en el template de RunPod)
     python3.12 -m pip install -q huggingface_hub gradio
     python3.12 -m pip install -q scipy imageio imageio-ffmpeg av
-    python3.12 -m pip install -q accelerate einops safetensors "transformers==4.46.3" openimageio
+    python3.12 -m pip install -q accelerate einops safetensors openimageio
+    python3.12 -m pip install -q "transformers>=4.52"
     python3.12 -m pip install -q -e packages/ltx-core --no-deps
     python3.12 -m pip install -q -e packages/ltx-pipelines --no-deps
     python3.12 -m pip install -q -e packages/ltx-trainer --no-deps
