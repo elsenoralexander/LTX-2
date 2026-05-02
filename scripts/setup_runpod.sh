@@ -26,9 +26,14 @@ fi
 cd "$REPO_DIR"
 
 echo "=== [4/5] Instalando dependencias Python ==="
-uv sync --frozen
-# Flash Attention para Hopper GPUs (H100). Omitir si usas A100/RTX:
-# uv sync --extra xformers
+# Usamos pip en lugar de uv para reutilizar PyTorch del sistema (ya viene en el template)
+# Esto evita descargar 3-4 GB de CUDA que ya están instalados
+pip install -q huggingface_hub gradio
+pip install -q -e packages/ltx-core --no-deps
+pip install -q -e packages/ltx-pipelines --no-deps
+pip install -q -e packages/ltx-trainer --no-deps
+# Instalar solo las dependencias que NO son torch/CUDA
+pip install -q wandb imageio-ffmpeg scipy bitsandbytes opencv-python av 2>/dev/null || true
 
 echo "=== [5/5] Creando directorio de modelos ==="
 mkdir -p "$MODELS_DIR"

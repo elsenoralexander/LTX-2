@@ -81,19 +81,23 @@ ok "GPU detectada: $GPU"
 # =============================================================================
 header "PASO 2/4 — Verificando instalación"
 
-if [ ! -d "$REPO_DIR/.venv" ]; then
-    info "Primera vez — instalando dependencias (~3 min)..."
+DEPS_MARKER="$REPO_DIR/.deps_installed"
+if [ ! -f "$DEPS_MARKER" ]; then
+    info "Primera vez — instalando dependencias (~2 min)..."
     if [ ! -d "$REPO_DIR" ]; then
         info "Clonando repositorio..."
         git clone https://github.com/elsenoralexander/LTX-2.git "$REPO_DIR"
     fi
     cd "$REPO_DIR"
-    curl -LsSf https://astral.sh/uv/install.sh | sh > /dev/null 2>&1
-    export PATH="$HOME/.local/bin:$PATH"
-    uv sync --frozen
+    # Reutiliza PyTorch del sistema (ya viene en el template de RunPod)
+    pip install -q huggingface_hub gradio
+    pip install -q -e packages/ltx-core --no-deps
+    pip install -q -e packages/ltx-pipelines --no-deps
+    pip install -q -e packages/ltx-trainer --no-deps
+    pip install -q wandb imageio-ffmpeg scipy bitsandbytes opencv-python av 2>/dev/null || true
+    touch "$DEPS_MARKER"
     ok "Dependencias instaladas"
 else
-    export PATH="$HOME/.local/bin:$PATH"
     ok "Dependencias ya instaladas — saltando"
 fi
 
@@ -169,7 +173,6 @@ fi
 header "PASO 4/4 — Lanzando Web UI"
 
 cd "$REPO_DIR"
-source .venv/bin/activate
 
 # Obtener la URL pública del pod
 POD_ID=$(hostname | cut -d'-' -f1 2>/dev/null || echo "tu-pod")
