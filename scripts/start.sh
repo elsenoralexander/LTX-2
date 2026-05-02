@@ -134,29 +134,41 @@ if [ "$MODELS_OK" = false ]; then
         export HF_TOKEN
     fi
 
-    huggingface-cli login --token "$HF_TOKEN" --add-to-git-credential > /dev/null 2>&1
-    pip install -q huggingface_hub
+    pip install -q huggingface_hub hf_transfer
+    export HF_HUB_ENABLE_HF_TRANSFER=1
+
+    # Login con token
+    python3 -c "from huggingface_hub import login; login('$HF_TOKEN')" > /dev/null 2>&1
 
     mkdir -p "$MODELS_DIR"
 
     info "Descargando modelo distilled (~44 GB)..."
-    huggingface-cli download Lightricks/LTX-2.3 \
-        ltx-2.3-22b-distilled-1.1.safetensors \
-        --local-dir "$MODELS_DIR" --local-dir-use-symlinks False
+    python3 -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-22b-distilled-1.1.safetensors', local_dir='$MODELS_DIR')
+print('OK')
+"
 
     info "Descargando spatial upscaler (~2 GB)..."
-    huggingface-cli download Lightricks/LTX-2.3 \
-        ltx-2.3-spatial-upscaler-x2-1.1.safetensors \
-        --local-dir "$MODELS_DIR" --local-dir-use-symlinks False
+    python3 -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-spatial-upscaler-x2-1.1.safetensors', local_dir='$MODELS_DIR')
+print('OK')
+"
 
     info "Descargando distilled LoRA (~1 GB)..."
-    huggingface-cli download Lightricks/LTX-2.3 \
-        ltx-2.3-22b-distilled-lora-384-1.1.safetensors \
-        --local-dir "$MODELS_DIR" --local-dir-use-symlinks False
+    python3 -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download('Lightricks/LTX-2.3', 'ltx-2.3-22b-distilled-lora-384-1.1.safetensors', local_dir='$MODELS_DIR')
+print('OK')
+"
 
     info "Descargando Gemma text encoder (~8 GB)..."
-    huggingface-cli download google/gemma-3-12b-it-qat-q4_0-unquantized \
-        --local-dir "$GEMMA" --local-dir-use-symlinks False
+    python3 -c "
+from huggingface_hub import snapshot_download
+snapshot_download('google/gemma-3-12b-it-qat-q4_0-unquantized', local_dir='$GEMMA')
+print('OK')
+"
 
     ok "Modelos descargados"
 else
