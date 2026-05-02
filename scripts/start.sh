@@ -90,11 +90,11 @@ if [ ! -f "$DEPS_MARKER" ]; then
     fi
     cd "$REPO_DIR"
     # Reutiliza PyTorch del sistema (ya viene en el template de RunPod)
-    pip install -q huggingface_hub gradio
-    pip install -q -e packages/ltx-core --no-deps
-    pip install -q -e packages/ltx-pipelines --no-deps
-    pip install -q -e packages/ltx-trainer --no-deps
-    pip install -q wandb imageio-ffmpeg scipy bitsandbytes opencv-python av 2>/dev/null || true
+    python3.12 -m pip install -q huggingface_hub gradio
+    python3.12 -m pip install -q -e packages/ltx-core --no-deps
+    python3.12 -m pip install -q -e packages/ltx-pipelines --no-deps
+    python3.12 -m pip install -q -e packages/ltx-trainer --no-deps
+    python3.12 -m pip install -q wandb imageio-ffmpeg scipy bitsandbytes opencv-python av 2>/dev/null || true
     touch "$DEPS_MARKER"
     ok "Dependencias instaladas"
 else
@@ -211,4 +211,4 @@ echo "  ║   (Ctrl+C para parar)                        ║"
 echo "  ╚══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-MODELS_DIR="$MODELS_DIR" REPO_DIR="$REPO_DIR" python "$REPO_DIR/scripts/webui.py"
+MODELS_DIR="$MODELS_DIR" REPO_DIR="$REPO_DIR" python3.12 "$REPO_DIR/scripts/webui.py"

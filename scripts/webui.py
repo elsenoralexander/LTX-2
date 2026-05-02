@@ -142,7 +142,7 @@ def generate_video(
 # Interfaz Gradio
 # =============================================================================
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="LTX-2.3 — Generador de Video", theme=gr.themes.Soft()) as demo:
+    with gr.Blocks(title="LTX-2.3 — Generador de Video") as demo:
         gr.Markdown("# LTX-2.3 — Generador de Video Local\nModelo de 22B parámetros corriendo en tu GPU alquilada.")
 
         with gr.Row():
